@@ -173,7 +173,7 @@ loop do
         tags = {
           connection: dev_info.fetch("connection"),
           mac_address: dev_mac,
-          ip_address: dev_info.fetch("ip"),
+          ip_address: dev_info.fetch("ip", "unknown"),
         }
         device_lease_validity.observe(dev_info.fetch("lease_validity", -1), tags)
       end
