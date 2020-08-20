@@ -2,23 +2,53 @@
 
 require "json"
 require "mechanize"
+require "optparse"
 require "prometheus_exporter"
 require "prometheus_exporter/server"
+
+options = {
+  address: "127.0.0.1",
+  port: 3030,
+  amplifi_url: "http://192.168.164.1",
+  password: ENV["AMPLIFI_PASSWORD"],
+  interval: 15.0,
+}
+OptionParser.new do |opts|
+  opts.banner = "Usage: bundle exec ruby main.rb [options]"
+
+  opts.on("--address ADDR") do |v|
+    options[:address] = v
+  end
+  opts.on("--port PORT") do |v|
+    options[:port] = v.to_i
+  end
+  opts.on("--amplifi URL", "Base URL, e.g. 'http://10.0.0.1'") do |v|
+    options[:amplifi_url] = v
+  end
+  opts.on("--password PASSWORD") do |v|
+    options[:password] = v
+  end
+  opts.on("--interval INTERVAL") do |v|
+    options[:interval] = v.to_f
+  end
+  opts.on("--mock FILE") do |v|
+    options[:mock] = v
+  end
+end.parse!
+
+INTERVAL = options.fetch(:interval)
+raise "Invalid interval #{INTERVAL}" if INTERVAL < 5.0
+raise "Missing password!" unless options[:password]
 
 trap(:INT) { exit 0 }
 trap(:TERM) { exit 0 }
 
-metrics_addr = "127.0.0.1"
-metrics_port = 3030
-amplifi_url = "http://192.168.164.1/"
-password = ENV.fetch("AMPLIFI_PASSWORD")
-
-# These should use the same interval as each other.
-INTERVAL = 15.0
-
+address = options.fetch(:address)
+port = options.fetch(:port)
+puts "Listen on #{address}:#{port}"
 server = PrometheusExporter::Server::WebServer.new \
-  bind: "127.0.0.1",
-  port: 3030
+  bind: address,
+  port: port
 server.start
 
 all_metrics = [
@@ -50,11 +80,12 @@ class AmplifiReader
     @url = url
     @password = password
     @agent = Mechanize.new
+    @agent.follow_meta_refresh = true
+    #@agent.log = Logger.new(STDOUT).tap { |l| l.level = Logger::DEBUG }
   end
 
   def setup
-    @agent.follow_meta_refresh = true
-    page = @agent.get(@url + "info.php")
+    page = @agent.get(URI.join(@url, "info.php"))
     if page.form
       page.form.password = @password
       page = page.form.submit
@@ -65,7 +96,7 @@ class AmplifiReader
   end
 
   def read
-    page = @agent.post(@url + "info-async.php", "do" => "full", "token" => @token)
+    page = @agent.post(URI.join(@url, "info-async.php"), "do" => "full", "token" => @token)
     JSON.parse(page.body)
   end
 end
@@ -83,16 +114,21 @@ class TestReader
   end
 end
 
-reader = ARGV.size > 0 ? TestReader.new(ARGV.first) : AmplifiReader.new(url: amplifi_url, password: password)
+reader = options[:mock] ?
+  TestReader.new(options[:mock]) :
+  AmplifiReader.new(url: options.fetch(:amplifi_url), password: options.fetch(:password))
 
 loop do
+  puts "Set up #{reader.class}"
   reader.setup
 
   begin
     loop do
       start = Time.now.to_f
 
+      #puts "Poll #{reader.class}"
       full = reader.read
+      p full[0]
 
       # entry[0] is topology of amplifi mesh.
       # entry[0]: {children, cost, friendly_name, ip, level, mac, platform_name, protocol, role, uptime}
