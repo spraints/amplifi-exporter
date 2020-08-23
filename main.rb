@@ -168,15 +168,6 @@ loop do
       # entry[2]: {connection: "ethernet"|"wireless", description, host_name, icon_id, ip, lease_validity, peer, dscp, port}
       #  port is only for ethernet
       #  dscp is QoS. possible values include 40, 56 see https://erg.abdn.ac.uk/users/gorry/course/inet-pages/dscp.html
-      device_lease_validity.reset!
-      full[2].each do |dev_mac, dev_info|
-        tags = {
-          connection: dev_info.fetch("connection"),
-          mac_address: dev_mac,
-          ip_address: dev_info.fetch("ip", "unknown"),
-        }
-        device_lease_validity.observe(dev_info.fetch("lease_validity", -1), tags)
-      end
 
       # entry[3] is wired devices and which port they're connected to.
       # entry[3]: {<mac>: N}
