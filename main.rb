@@ -128,7 +128,6 @@ loop do
 
       #puts "Poll #{reader.class}"
       full = reader.read
-      p full[0]
 
       # entry[0] is topology of amplifi mesh.
       # entry[0]: {children, cost, friendly_name, ip, level, mac, platform_name, protocol, role, uptime}
@@ -142,6 +141,7 @@ loop do
           networks.each do |network_type, devices|
             devices.each do |dev_mac, dev_info|
               tags = {
+                hostname: dev_info["Hostname"] || dev_info["Description"],
                 ip_address: dev_info.fetch("Address", "unknown"),
                 mac_address: dev_mac,
                 access_point: ap_mac,
