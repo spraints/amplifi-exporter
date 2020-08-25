@@ -34,6 +34,16 @@ OptionParser.new do |opts|
   opts.on("--mock FILE") do |v|
     options[:mock] = v
   end
+  opts.on("--capture FILE") do |v|
+    options[:capture] = v
+  end
+  opts.on("--verbose") do
+    options[:verbose] = true
+  end
+  opts.on("--debug") do
+    options[:debug] = true
+    options[:verbose] = true
+  end
 end.parse!
 
 INTERVAL = options.fetch(:interval)
@@ -76,12 +86,15 @@ all_metrics.each do |metric|
 end
 
 class AmplifiReader
-  def initialize(url:, password:)
+  def initialize(url:, password:, capture: nil, debug: false)
     @url = url
     @password = password
+    @capture = capture
     @agent = Mechanize.new
     @agent.follow_meta_refresh = true
-    #@agent.log = Logger.new(STDOUT).tap { |l| l.level = Logger::DEBUG }
+    if debug
+      @agent.log = Logger.new(STDOUT).tap { |l| l.level = Logger::DEBUG }
+    end
   end
 
   def setup
@@ -97,6 +110,10 @@ class AmplifiReader
 
   def read
     page = @agent.post(URI.join(@url, "info-async.php"), "do" => "full", "token" => @token)
+    if @capture
+      File.write(@capture, page.body)
+      puts "Wrote #{File.size(@capture)} bytes to #{@capture}"
+    end
     JSON.parse(page.body)
   end
 end
@@ -116,17 +133,17 @@ end
 
 reader = options[:mock] ?
   TestReader.new(options[:mock]) :
-  AmplifiReader.new(url: options.fetch(:amplifi_url), password: options.fetch(:password))
+  AmplifiReader.new(url: options.fetch(:amplifi_url), password: options.fetch(:password), debug: options.fetch(:debug, false), capture: options.fetch(:capture, nil))
 
 loop do
-  puts "Set up #{reader.class}"
+  puts "Set up #{reader.class}" if options[:verbose]
   reader.setup
 
   begin
     loop do
       start = Time.now.to_f
 
-      #puts "Poll #{reader.class}"
+      puts "Poll #{reader.class}" if options[:verbose]
       full = reader.read
 
       # entry[0] is topology of amplifi mesh.
