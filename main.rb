@@ -53,9 +53,13 @@ raise "Missing password!" unless options[:password]
 trap(:INT) { exit 0 }
 trap(:TERM) { exit 0 }
 
+def say(message)
+  puts "[#{Time.now}] #{message}"
+end
+
 address = options.fetch(:address)
 port = options.fetch(:port)
-puts "Listen on #{address}:#{port}"
+say "Listen on #{address}:#{port}"
 server = PrometheusExporter::Server::WebServer.new \
   bind: address,
   port: port
@@ -136,14 +140,21 @@ reader = options[:mock] ?
   AmplifiReader.new(url: options.fetch(:amplifi_url), password: options.fetch(:password), debug: options.fetch(:debug, false), capture: options.fetch(:capture, nil))
 
 loop do
-  puts "Set up #{reader.class}" if options[:verbose]
+  say "Set up #{reader.class}"
   reader.setup
 
   begin
+    last_start = nil
+
     loop do
       start = Time.now.to_f
 
-      puts "Poll #{reader.class}" if options[:verbose]
+      if last_start && (start - last_start) > (INTERVAL + 0.5)
+        say "WARNING slow loop: #{'%0.3f' % (start - last_start)} > #{'%0.3f' % INTERVAL}"
+      end
+      last_start = start
+
+      say "Poll #{reader.class}" if options[:verbose]
       full = reader.read
 
       # entry[0] is topology of amplifi mesh.
@@ -212,11 +223,13 @@ loop do
       #   services: array of string like "_adisk._tcp.local"
 
       elapsed = Time.now.to_f - start.to_f
-      sleep(INTERVAL - elapsed)
+      remain = INTERVAL - elapsed
+      sleep_for = [1.0, remain].max
+      sleep(sleep_for)
     end
   rescue JSON::ParserError => e
-    puts "#{e.class}: #{e}"
-    puts "starting over in one minute"
+    say "#{e.class}: #{e}"
+    say "starting over in one minute"
     sleep 60
   end
 end
